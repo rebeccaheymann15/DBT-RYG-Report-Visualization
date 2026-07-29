@@ -1,0 +1,65 @@
+.file-upload {
+  position: relative;
+  background: white;
+  border: 2px dashed #ddd;
+  border-radius: 8px;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.file-upload:hover {
+  border-color: #1a1a3e;
+  background: #f9f9ff;
+}
+
+.file-upload.drag-active {
+  border-color: #1a1a3e;
+  background: #f0f0ff;
+  box-shadow: 0 4px 12px rgba(26, 26, 62, 0.15);
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-content {
+  pointer-events: none;
+}
+
+.upload-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.file-upload h3 {
+  color: #1a1a3e;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.file-upload p {
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.file-upload small {
+  color: #999;
+  display: block;
+  font-size: 0.85rem;
+}
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1a1a3e;
+  font-weight: 500;
+}

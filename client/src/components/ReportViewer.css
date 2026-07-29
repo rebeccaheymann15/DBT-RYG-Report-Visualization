@@ -1,0 +1,38 @@
+.report-viewer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 600px;
+  background: white;
+  position: relative;
+}
+
+.report-viewer.loading,
+.report-viewer.error {
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.report-viewer.error {
+  color: #c33;
+  background: #fee;
+}
+
+.report-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.no-content {
+  color: #999;
+  text-align: center;
+  padding: 2rem;
+}
+
+@media (max-width: 768px) {
+  .report-viewer {
+    height: auto;
+    min-height: 500px;
+  }
+}
