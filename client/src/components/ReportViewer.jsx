@@ -14,10 +14,20 @@ export default function ReportViewer({ reportId }) {
       setLoading(true);
       setError(null);
       try {
-        const response = await axios.get(`/api/report/${reportId}`);
-        setHtmlContent(response.data);
+        const response = await axios.get(`/api/report/${reportId}`, {
+          responseType: 'text'
+        });
+        if (typeof response.data === 'string' && response.data.trim().length > 0) {
+          setHtmlContent(response.data);
+        } else {
+          setError('Report content is empty or invalid.');
+        }
       } catch (err) {
-        setError('Failed to load report. It may still be processing.');
+        if (err.response?.status === 404) {
+          setError('Report not found. Try uploading the file again.');
+        } else {
+          setError('Failed to load report. It may still be processing.');
+        }
         console.error(err);
       } finally {
         setLoading(false);

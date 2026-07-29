@@ -43,14 +43,22 @@ app.use(express.json());
 
 // Helper functions
 function loadMetadata() {
-  if (fs.existsSync(metadataFile)) {
-    return JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+  try {
+    if (fs.existsSync(metadataFile)) {
+      return JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Error loading metadata:', err);
   }
   return { files: [] };
 }
 
 function saveMetadata(metadata) {
-  fs.writeFileSync(metadataFile, JSON.stringify(metadata, null, 2));
+  try {
+    fs.writeFileSync(metadataFile, JSON.stringify(metadata, null, 2));
+  } catch (err) {
+    console.error('Error saving metadata:', err);
+  }
 }
 
 // API Routes
@@ -135,11 +143,36 @@ app.get('/api/uploads', (req, res) => {
 
 app.get('/api/report/:id', (req, res) => {
   const reportPath = path.join(reportsDir, `${req.params.id}.html`);
-  if (fs.existsSync(reportPath)) {
-    res.sendFile(reportPath);
-  } else {
-    res.status(404).json({ error: 'Report not found' });
+  try {
+    if (fs.existsSync(reportPath)) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      const content = fs.readFileSync(reportPath, 'utf8');
+      res.send(content);
+    } else {
+      res.status(404).json({
+        error: 'Report not found',
+        message: 'This may be due to Vercel\'s serverless environment not supporting persistent storage in /tmp. Please use local development or a persistent storage solution.',
+        reportPath
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Error reading report', message: err.message });
   }
+});
+
+// Debug endpoint
+app.get('/api/debug', (req, res) => {
+  const metadata = loadMetadata();
+  res.json({
+    uploadsDir,
+    reportsDir,
+    metadataFile,
+    uploadsExist: fs.existsSync(uploadsDir),
+    reportsExist: fs.existsSync(reportsDir),
+    metadataExist: fs.existsSync(metadataFile),
+    files: metadata.files,
+    reportsOnDisk: fs.existsSync(reportsDir) ? fs.readdirSync(reportsDir) : []
+  });
 });
 
 module.exports = app;
