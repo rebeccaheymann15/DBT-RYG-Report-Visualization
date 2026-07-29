@@ -1,6 +1,7 @@
 {
   "name": "dbt-ryg-report-visualization",
   "version": "1.0.0",
+  "type": "module",
   "description": "Excel to RYG Report Visualization Webapp",
   "main": "server/index.js",
   "scripts": {

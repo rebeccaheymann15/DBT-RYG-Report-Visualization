@@ -1,4 +1,4 @@
-const { Pool } = require('pg');
+import { Pool } from 'pg';
 
 if (!process.env.DATABASE_URL) {
   console.warn('⚠️  DATABASE_URL environment variable not set. Database features will not work.');
@@ -7,22 +7,19 @@ if (!process.env.DATABASE_URL) {
 
 const pool = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Let the connection string handle SSL configuration
-  // Don't override with rejectUnauthorized unless needed
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 }) : null;
 
 let dbReady = false;
 
 // Initialize database schema
-async function initializeDB() {
+export async function initializeDB() {
   if (!pool) {
     console.error('❌ Database pool not initialized. DATABASE_URL is not set.');
     return;
   }
 
   try {
-    // Test connection
     await pool.query('SELECT NOW()');
     console.log('✓ Connected to Neon PostgreSQL');
 
@@ -48,7 +45,7 @@ async function initializeDB() {
 }
 
 // Query functions
-const db = {
+export const db = {
   isReady() {
     return dbReady && pool !== null;
   },
@@ -124,5 +121,3 @@ const db = {
     }
   }
 };
-
-module.exports = { db, initializeDB, pool };

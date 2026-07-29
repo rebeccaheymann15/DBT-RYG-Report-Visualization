@@ -1,24 +1,25 @@
-const express = require('express');
-const cors = require('cors');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
-const { db, initializeDB } = require('./api/db');
+import express from 'express';
+import cors from 'cors';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { db, initializeDB } from './api/db.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const __dirname = path.resolve();
 
 // Initialize database on startup
 initializeDB();
 
 // Create temporary upload directory for file processing
-const uploadsDir = path.join(__dirname, 'uploads');
-[uploadsDir].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-});
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Multer config for file uploads
 const storage = multer.diskStorage({
@@ -43,7 +44,6 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json());
-
 
 // Upload and process file
 app.post('/api/upload', upload.single('file'), async (req, res) => {
@@ -140,10 +140,16 @@ app.get('/api/report/:id', async (req, res) => {
   }
 });
 
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', database: 'neon-postgresql' });
+});
+
 // Serve React app in production
-app.use(express.static(path.join(__dirname, 'client', 'dist')));
+const clientDistPath = path.join(__dirname, '../client/dist');
+app.use(express.static(clientDistPath));
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
+  res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
 app.listen(PORT, () => {
