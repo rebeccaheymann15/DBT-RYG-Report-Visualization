@@ -1,16 +1,22 @@
 {
   "version": 2,
-  "buildCommand": "npm --prefix client install && npm --prefix client run build",
+  "buildCommand": "npm install && npm --prefix client install && npm --prefix client run build",
   "installCommand": "npm install",
   "outputDirectory": "client/dist",
-  "rewrites": [
+  "functions": {
+    "api/handler.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/index.js"
+      "src": "/api/(.*)",
+      "dest": "/api/handler.js"
     },
     {
-      "source": "/:path*",
-      "destination": "/:path*/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
