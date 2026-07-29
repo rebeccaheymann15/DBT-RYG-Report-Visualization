@@ -75,7 +75,7 @@ export default function ReportViewer({ reportId }) {
           srcDoc={htmlContent}
           className="report-iframe"
           title="Generated Report"
-          sandbox="allow-same-origin"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
         />
       ) : (
         <div className="no-content">
