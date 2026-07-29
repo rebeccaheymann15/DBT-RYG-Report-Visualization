@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { db, initializeDB } from '../api/db.js';
+import { generateReport } from './reportGenerator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,46 +59,38 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   const reportId = timestamp.toString();
 
   try {
-    // Create placeholder HTML report
-    const placeholderHTML = `
+    // Generate report from Excel file
+    let reportHTML;
+    try {
+      reportHTML = generateReport(filePath, originalName);
+    } catch (error) {
+      console.error('Error generating report:', error);
+      // Fallback to error message
+      reportHTML = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>DBT RYG Report - ${originalName}</title>
+  <title>Report Generation Error</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-    .header { background: #1a1a3e; color: white; padding: 20px; border-radius: 4px; margin-bottom: 20px; }
-    .content { background: white; padding: 20px; border-radius: 4px; }
-    .info { background: #e8f4f8; border-left: 4px solid #0288d1; padding: 15px; margin: 20px 0; }
-    .file-info { color: #666; font-size: 0.9em; }
+    .error { background: #fee; border: 1px solid #fcc; color: #c33; padding: 20px; border-radius: 4px; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>DBT RYG Report</h1>
-    <p>Report ID: ${reportId}</p>
-  </div>
-  <div class="content">
-    <div class="info">
-      <h3>File Information</h3>
-      <div class="file-info">
-        <p><strong>File Name:</strong> ${originalName}</p>
-        <p><strong>Upload Time:</strong> ${uploadTime.toLocaleString()}</p>
-        <p><strong>Report ID:</strong> ${reportId}</p>
-      </div>
-    </div>
-    <div class="info">
-      <h3>Status</h3>
-      <p>Report generation in progress. The actual report visualization will appear here once the Excel file is processed.</p>
-    </div>
+  <div class="error">
+    <h3>Report Generation Error</h3>
+    <p>Could not process file: ${originalName}</p>
+    <p>${error.message}</p>
+    <p>Please ensure the Excel file has the correct structure with columns: Account, Project Status, Project Overall, etc.</p>
   </div>
 </body>
 </html>
-    `;
+      `;
+    }
 
     // Save to database
-    await db.saveReport(reportId, originalName, uploadTime, placeholderHTML);
+    await db.saveReport(reportId, originalName, uploadTime, reportHTML);
 
     // Clean up temp file
     fs.unlink(filePath, (err) => {
