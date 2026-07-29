@@ -2,15 +2,10 @@
   "version": 2,
   "buildCommand": "npm install && npm --prefix client install && npm --prefix client run build",
   "installCommand": "npm install",
-  "outputDirectory": "client/dist",
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+  "functions": {
+    "api/index.js": {
+      "memory": 1024,
+      "maxDuration": 60
     }
-  ]
+  }
 }
