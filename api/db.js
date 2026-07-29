@@ -7,9 +7,9 @@ if (!process.env.DATABASE_URL) {
 
 const pool = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  // Let the connection string handle SSL configuration
+  // Don't override with rejectUnauthorized unless needed
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 }) : null;
 
 let dbReady = false;
