@@ -3,20 +3,14 @@
   "buildCommand": "npm install && npm --prefix client install && npm --prefix client run build",
   "installCommand": "npm install",
   "outputDirectory": "client/dist",
-  "functions": {
-    "api/handler.js": {
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/handler.js"
+      "source": "/api/(.*)",
+      "destination": "/api/handler"
     },
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
