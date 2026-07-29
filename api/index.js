@@ -3,23 +3,16 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const { db, initializeDB } = require('./db');
 
 const app = express();
 
-// Use /tmp for serverless function storage
-const uploadsDir = '/tmp/uploads';
-const reportsDir = '/tmp/reports';
-const metadataFile = '/tmp/metadata.json';
+// Initialize database on startup
+initializeDB();
 
-[uploadsDir, reportsDir].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-});
-
-// Multer config
+// Multer config - store in /tmp temporarily
 const storage = multer.diskStorage({
-  destination: uploadsDir,
+  destination: '/tmp',
   filename: (req, file, cb) => {
     const timestamp = Date.now();
     cb(null, `${timestamp}-${file.originalname}`);
@@ -41,27 +34,7 @@ const upload = multer({
 app.use(cors());
 app.use(express.json());
 
-// Helper functions
-function loadMetadata() {
-  try {
-    if (fs.existsSync(metadataFile)) {
-      return JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
-    }
-  } catch (err) {
-    console.error('Error loading metadata:', err);
-  }
-  return { files: [] };
-}
-
-function saveMetadata(metadata) {
-  try {
-    fs.writeFileSync(metadataFile, JSON.stringify(metadata, null, 2));
-  } catch (err) {
-    console.error('Error saving metadata:', err);
-  }
-}
-
-// API Routes
+// Upload and process file
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
@@ -74,8 +47,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   const reportId = timestamp.toString();
 
   try {
-    const reportPath = path.join(reportsDir, `${reportId}.html`);
-
+    // Generate placeholder HTML report
     const placeholderHTML = `
 <!DOCTYPE html>
 <html>
@@ -113,17 +85,13 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 </html>
     `;
 
-    fs.writeFileSync(reportPath, placeholderHTML);
+    // Save to database
+    await db.saveReport(reportId, originalName, new Date(uploadTime), placeholderHTML);
 
-    const metadata = loadMetadata();
-    metadata.files.unshift({
-      id: reportId,
-      originalName,
-      uploadTime,
-      fileName: req.file.filename,
-      reportPath: `${reportId}.html`
+    // Clean up temp file
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Error deleting temp file:', err);
     });
-    saveMetadata(metadata);
 
     res.json({
       success: true,
@@ -136,43 +104,54 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-app.get('/api/uploads', (req, res) => {
-  const metadata = loadMetadata();
-  res.json(metadata.files);
-});
-
-app.get('/api/report/:id', (req, res) => {
-  const reportPath = path.join(reportsDir, `${req.params.id}.html`);
+// Get upload history
+app.get('/api/uploads', async (req, res) => {
   try {
-    if (fs.existsSync(reportPath)) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      const content = fs.readFileSync(reportPath, 'utf8');
-      res.send(content);
-    } else {
-      res.status(404).json({
-        error: 'Report not found',
-        message: 'This may be due to Vercel\'s serverless environment not supporting persistent storage in /tmp. Please use local development or a persistent storage solution.',
-        reportPath
-      });
-    }
-  } catch (err) {
-    res.status(500).json({ error: 'Error reading report', message: err.message });
+    const files = await db.getAllReports();
+    res.json(files);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Get specific report
+app.get('/api/report/:id', async (req, res) => {
+  try {
+    const report = await db.getReport(req.params.id);
+    if (report) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(report.report_html);
+    } else {
+      res.status(404).json({ error: 'Report not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', database: 'neon-postgresql' });
+});
+
 // Debug endpoint
-app.get('/api/debug', (req, res) => {
-  const metadata = loadMetadata();
-  res.json({
-    uploadsDir,
-    reportsDir,
-    metadataFile,
-    uploadsExist: fs.existsSync(uploadsDir),
-    reportsExist: fs.existsSync(reportsDir),
-    metadataExist: fs.existsSync(metadataFile),
-    files: metadata.files,
-    reportsOnDisk: fs.existsSync(reportsDir) ? fs.readdirSync(reportsDir) : []
-  });
+app.get('/api/debug', async (req, res) => {
+  try {
+    const files = await db.getAllReports();
+    res.json({
+      status: 'ok',
+      database: 'neon-postgresql',
+      reportsCount: files.length,
+      databaseUrl: process.env.DATABASE_URL ? '✓ configured' : '✗ not configured',
+      files: files
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message,
+      databaseUrl: process.env.DATABASE_URL ? '✓ configured' : '✗ not configured'
+    });
+  }
 });
 
 module.exports = app;

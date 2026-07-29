@@ -30,14 +30,20 @@ A web application that allows users to import Excel files and generate visual DB
 
 ## Installation
 
-1. **Install dependencies**:
+1. **Set up Neon PostgreSQL** (Free tier available at [neon.tech](https://neon.tech)):
+   - Create a new project
+   - Copy your connection string (looks like `postgresql://user:password@ep-xxxxx.us-east-1.neon.tech/dbname`)
+   - Create a `.env` file in the root directory with your connection string:
+     ```
+     DATABASE_URL=postgresql://user:password@ep-xxxxx.us-east-1.neon.tech/dbname
+     ```
+
+2. **Install dependencies**:
    ```bash
-   npm install
-   cd client && npm install && cd ..
+   npm run install:all
    ```
 
-2. **Set up directories**:
-   The server will automatically create `uploads/`, `reports/`, and `data/` directories on first run.
+3. **Database schema** is created automatically on first run
 
 ## Development
 
@@ -95,28 +101,31 @@ NODE_ENV=development
 
 Supported formats: `.xlsx` and `.xls`
 
-## Deployment Notes
+## Deployment with Neon PostgreSQL
 
-### Local Development & Self-Hosted
-Works perfectly with persistent storage.
+### Local Development
+```bash
+npm run dev
+```
+Make sure your `.env` file has the `DATABASE_URL` set to your Neon PostgreSQL connection string.
 
-### Vercel Deployment ⚠️
-**Known Limitation:** Vercel's serverless functions don't support persistent storage in `/tmp`. Files uploaded in one request won't be available in the next request.
+### Vercel Deployment ✅
+Now works with Neon PostgreSQL! 
 
-**Solutions:**
-1. **For Development:** Use local deployment (`npm run dev`)
-2. **For Production:** Deploy to a platform with persistent storage:
-   - [Render.com](https://render.com) (free tier available)
-   - [Railway.app](https://railway.app)
-   - [Fly.io](https://fly.io)
-   - [AWS, Heroku, DigitalOcean](https://www.digitalocean.com/products/app-platform), etc.
+1. Create a free [Neon](https://neon.tech) PostgreSQL database
+2. In Vercel dashboard → Settings → Environment Variables
+3. Add `DATABASE_URL` with your Neon connection string
+4. Deploy! Reports are now persisted in the database
 
-3. **For Vercel with Persistent Storage:**
-   - Integrate with [Vercel KV](https://vercel.com/docs/storage/vercel-kv) for metadata
-   - Use S3 or similar for file storage
-   - Store report HTML in a database
+**Debug endpoint:** Visit `/api/debug` to check database connection and view all reports.
 
-**Debug endpoint:** Visit `/api/debug` to check file persistence status.
+### Other Platforms
+Vercel, Render, Railway, Fly.io, etc. all work with Neon PostgreSQL.
+
+**Setup is the same:**
+1. Create Neon project
+2. Add `DATABASE_URL` environment variable to your deployment platform
+3. Deploy
 
 ## Notes
 
