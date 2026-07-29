@@ -130,8 +130,20 @@ app.get('/api/report/:id', async (req, res) => {
 });
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', database: 'neon-postgresql' });
+app.get('/api/health', async (req, res) => {
+  try {
+    if (db.isReady()) {
+      res.json({ status: 'ok', database: 'neon-postgresql', connected: true });
+    } else {
+      res.status(503).json({
+        status: 'error',
+        message: 'Database not initialized',
+        databaseUrl: process.env.DATABASE_URL ? '✓ set' : '✗ not set'
+      });
+    }
+  } catch (err) {
+    res.status(503).json({ status: 'error', message: err.message });
+  }
 });
 
 // Debug endpoint
@@ -150,6 +162,40 @@ app.get('/api/debug', async (req, res) => {
       status: 'error',
       message: error.message,
       databaseUrl: process.env.DATABASE_URL ? '✓ configured' : '✗ not configured'
+    });
+  }
+});
+
+// Test connection endpoint
+app.get('/api/test-connection', async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) {
+      return res.status(400).json({
+        error: 'DATABASE_URL not set',
+        help: 'Set DATABASE_URL environment variable to your Neon connection string'
+      });
+    }
+
+    const { pool } = require('./db');
+    if (!pool) {
+      return res.status(503).json({
+        error: 'Database pool not initialized',
+        message: 'The pg connection pool could not be created'
+      });
+    }
+
+    const result = await pool.query('SELECT NOW()');
+    res.json({
+      success: true,
+      message: 'Database connection successful',
+      timestamp: result.rows[0].now
+    });
+  } catch (error) {
+    res.status(503).json({
+      error: 'Database connection failed',
+      message: error.message,
+      code: error.code,
+      databaseUrl: process.env.DATABASE_URL ? 'set' : 'not set'
     });
   }
 });
