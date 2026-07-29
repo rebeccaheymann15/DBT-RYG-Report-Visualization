@@ -2,15 +2,5 @@
   "version": 2,
   "buildCommand": "npm install && npm --prefix client install && npm --prefix client run build",
   "installCommand": "npm install",
-  "outputDirectory": "client/dist",
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/handler"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  "outputDirectory": "client/dist"
 }
