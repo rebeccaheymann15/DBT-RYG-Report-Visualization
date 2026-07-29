@@ -3,18 +3,18 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { db, initializeDB } = require('./api/db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const __dirname = path.resolve();
 
-// Create necessary directories
-const uploadsDir = path.join(__dirname, 'uploads');
-const reportsDir = path.join(__dirname, 'reports');
-const metadataFile = path.join(__dirname, 'data', 'metadata.json');
+// Initialize database on startup
+initializeDB();
 
-[uploadsDir, reportsDir, path.join(__dirname, 'data')].forEach(dir => {
+// Create temporary upload directory for file processing
+const uploadsDir = path.join(__dirname, 'uploads');
+[uploadsDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -44,18 +44,6 @@ const upload = multer({
 app.use(cors());
 app.use(express.json());
 
-// Helper to load metadata
-function loadMetadata() {
-  if (fs.existsSync(metadataFile)) {
-    return JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
-  }
-  return { files: [] };
-}
-
-// Helper to save metadata
-function saveMetadata(metadata) {
-  fs.writeFileSync(metadataFile, JSON.stringify(metadata, null, 2));
-}
 
 // Upload and process file
 app.post('/api/upload', upload.single('file'), async (req, res) => {
@@ -66,14 +54,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   const filePath = req.file.path;
   const originalName = req.file.originalname;
   const timestamp = parseInt(req.file.filename.split('-')[0]);
-  const uploadTime = new Date(timestamp).toISOString();
+  const uploadTime = new Date(timestamp);
   const reportId = timestamp.toString();
 
   try {
-    // For now, create a placeholder HTML report
-    // This would be replaced with actual skill integration
-    const reportPath = path.join(reportsDir, `${reportId}.html`);
-
+    // Create placeholder HTML report
     const placeholderHTML = `
 <!DOCTYPE html>
 <html>
@@ -98,7 +83,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       <h3>File Information</h3>
       <div class="file-info">
         <p><strong>File Name:</strong> ${originalName}</p>
-        <p><strong>Upload Time:</strong> ${new Date(uploadTime).toLocaleString()}</p>
+        <p><strong>Upload Time:</strong> ${uploadTime.toLocaleString()}</p>
         <p><strong>Report ID:</strong> ${reportId}</p>
       </div>
     </div>
@@ -111,24 +96,19 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 </html>
     `;
 
-    fs.writeFileSync(reportPath, placeholderHTML);
+    // Save to database
+    await db.saveReport(reportId, originalName, uploadTime, placeholderHTML);
 
-    // Update metadata
-    const metadata = loadMetadata();
-    metadata.files.unshift({
-      id: reportId,
-      originalName,
-      uploadTime,
-      fileName: req.file.filename,
-      reportPath: `${reportId}.html`
+    // Clean up temp file
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Error deleting temp file:', err);
     });
-    saveMetadata(metadata);
 
     res.json({
       success: true,
       id: reportId,
       fileName: originalName,
-      uploadTime
+      uploadTime: uploadTime.toISOString()
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -136,18 +116,27 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 });
 
 // Get upload history
-app.get('/api/uploads', (req, res) => {
-  const metadata = loadMetadata();
-  res.json(metadata.files);
+app.get('/api/uploads', async (req, res) => {
+  try {
+    const files = await db.getAllReports();
+    res.json(files);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Get specific report
-app.get('/api/report/:id', (req, res) => {
-  const reportPath = path.join(reportsDir, `${req.params.id}.html`);
-  if (fs.existsSync(reportPath)) {
-    res.sendFile(reportPath);
-  } else {
-    res.status(404).json({ error: 'Report not found' });
+app.get('/api/report/:id', async (req, res) => {
+  try {
+    const report = await db.getReport(req.params.id);
+    if (report) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(report.report_html);
+    } else {
+      res.status(404).json({ error: 'Report not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
