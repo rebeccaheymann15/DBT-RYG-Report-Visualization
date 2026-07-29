@@ -17,18 +17,41 @@ export default function ReportViewer({ reportId }) {
         const response = await axios.get(`/api/report/${reportId}`, {
           responseType: 'text'
         });
-        if (typeof response.data === 'string' && response.data.trim().length > 0) {
-          setHtmlContent(response.data);
+
+        const content = response.data;
+
+        // Validate response is HTML
+        if (!content || typeof content !== 'string') {
+          throw new Error('Invalid response format');
+        }
+
+        // Check if it's HTML (not JSON error)
+        if (content.startsWith('{') && content.includes('error')) {
+          try {
+            const errorObj = JSON.parse(content);
+            throw new Error(errorObj.error || 'Unknown error');
+          } catch (parseErr) {
+            // Continue if not valid JSON
+          }
+        }
+
+        if (content.trim().length === 0) {
+          setError('Report content is empty.');
         } else {
-          setError('Report content is empty or invalid.');
+          setHtmlContent(content);
         }
       } catch (err) {
+        console.error('Report load error:', err);
+
         if (err.response?.status === 404) {
           setError('Report not found. Try uploading the file again.');
+        } else if (err.message?.includes('Database not initialized')) {
+          setError('Database configuration error. Check your DATABASE_URL environment variable.');
+        } else if (err.code === 'ECONNABORTED' || err.code === 'ENOTFOUND') {
+          setError('Connection error. Check your internet connection.');
         } else {
-          setError('Failed to load report. It may still be processing.');
+          setError(`Error loading report: ${err.message || 'Unknown error'}`);
         }
-        console.error(err);
       } finally {
         setLoading(false);
       }

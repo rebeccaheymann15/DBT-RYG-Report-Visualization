@@ -10,11 +10,30 @@ export default function App() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [dbReady, setDbReady] = useState(true);
+
+  // Check database status on mount
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await axios.get('/api/health');
+        setDbReady(true);
+      } catch (err) {
+        setDbReady(false);
+        setError('⚠️ Database not configured. Set DATABASE_URL environment variable.');
+        console.error('Health check failed:', err);
+      }
+    };
+
+    checkHealth();
+  }, []);
 
   // Fetch upload history on mount
   useEffect(() => {
-    fetchUploads();
-  }, []);
+    if (dbReady) {
+      fetchUploads();
+    }
+  }, [dbReady]);
 
   const fetchUploads = async () => {
     try {
