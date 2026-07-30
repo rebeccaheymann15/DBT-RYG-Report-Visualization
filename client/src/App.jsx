@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Login from './components/Login';
+import Signup from './components/Signup';
+import PasswordSetup from './components/PasswordSetup';
+import ResetPassword from './components/ResetPassword';
+import ForgotPassword from './components/ForgotPassword';
 import FileUpload from './components/FileUpload';
 import ReportViewer from './components/ReportViewer';
 import UploadHistory from './components/UploadHistory';
@@ -8,13 +12,30 @@ import './App.css';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [uploads, setUploads] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dbReady, setDbReady] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authMode, setAuthMode] = useState('login'); // login, signup, forgotPassword
+  const [setupToken, setSetupToken] = useState(null);
+  const [resetToken, setResetToken] = useState(null);
+
+  // Check for setup or reset tokens in URL on mount
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/setup-password/')) {
+      const token = path.replace('/setup-password/', '');
+      setSetupToken(token);
+      setAuthMode('setup');
+    } else if (path.startsWith('/reset-password/')) {
+      const token = path.replace('/reset-password/', '');
+      setResetToken(token);
+      setAuthMode('resetPassword');
+    }
+  }, []);
 
   // Check authentication status on mount
   useEffect(() => {
@@ -23,7 +44,7 @@ export default function App() {
         const response = await axios.get('/api/auth/status');
         if (response.data.authenticated) {
           setAuthenticated(true);
-          setUsername(response.data.username);
+          setEmail(response.data.email);
         }
       } catch (err) {
         console.error('Auth check failed:', err);
@@ -90,16 +111,27 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = (user) => {
+  const handleLoginSuccess = (userEmail) => {
     setAuthenticated(true);
-    setUsername(user);
+    setEmail(userEmail);
+  };
+
+  const handlePasswordSetupSuccess = (userEmail) => {
+    setAuthenticated(true);
+    setEmail(userEmail);
+  };
+
+  const handleResetPasswordSuccess = () => {
+    setAuthMode('login');
+    setResetToken(null);
+    setError(null);
   };
 
   const handleLogout = async () => {
     try {
       await axios.post('/api/auth/logout');
       setAuthenticated(false);
-      setUsername('');
+      setEmail('');
       setUploads([]);
       setSelectedReport(null);
     } catch (err) {
@@ -112,7 +144,39 @@ export default function App() {
   }
 
   if (!authenticated) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    if (authMode === 'signup') {
+      return <Signup onSwitchToLogin={() => setAuthMode('login')} />;
+    }
+
+    if (authMode === 'forgotPassword') {
+      return <ForgotPassword onSwitchToLogin={() => setAuthMode('login')} />;
+    }
+
+    if (authMode === 'setup' && setupToken) {
+      return (
+        <PasswordSetup
+          token={setupToken}
+          onSuccess={() => handlePasswordSetupSuccess('user@example.com')}
+        />
+      );
+    }
+
+    if (authMode === 'resetPassword' && resetToken) {
+      return (
+        <ResetPassword
+          token={resetToken}
+          onSuccess={handleResetPasswordSuccess}
+        />
+      );
+    }
+
+    return (
+      <Login
+        onLoginSuccess={handleLoginSuccess}
+        onSwitchToSignup={() => setAuthMode('signup')}
+        onSwitchToForgotPassword={() => setAuthMode('forgotPassword')}
+      />
+    );
   }
 
   return (
@@ -124,7 +188,7 @@ export default function App() {
             <p className="subtitle">Import Excel files to generate visual reports</p>
           </div>
           <div className="header-actions">
-            <span className="user-info">Logged in as: <strong>{username}</strong></span>
+            <span className="user-info">Logged in as: <strong>{email}</strong></span>
             <button className="logout-button" onClick={handleLogout}>Logout</button>
           </div>
         </div>

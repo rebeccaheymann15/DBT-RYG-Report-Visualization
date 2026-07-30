@@ -4,11 +4,18 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
 import bcrypt from 'bcrypt';
 import session from 'express-session';
 import pgSession from 'connect-pg-simple';
 import { db, initializeDB } from '../api/db.js';
 import { generateReport } from './reportGenerator.js';
+import {
+  sendSignupVerificationEmail,
+  sendPasswordSetupEmail,
+  sendPasswordResetEmail,
+  sendSignupApprovedEmail
+} from './emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,6 +79,11 @@ app.use(sessionMiddleware);
 app.use(cors({ credentials: true }));
 app.use(express.json());
 
+// Helper function to generate tokens
+function generateToken() {
+  return randomBytes(32).toString('hex');
+}
+
 // Middleware to check if user is authenticated
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
@@ -80,37 +92,165 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// Initialize default user if needed
-async function initializeDefaultUser() {
+// ============ AUTHENTICATION ENDPOINTS ============
+
+// Sign up with email
+app.post('/api/auth/signup', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+
   try {
-    const existing = await db.getUserByUsername('admin');
-    if (!existing) {
-      const defaultPassword = process.env.DEFAULT_PASSWORD || 'admin123';
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-      await db.createUser('admin', hashedPassword);
-      console.log('✓ Default user "admin" created');
-      console.log(`  Default password: ${defaultPassword}`);
-      console.log('  ⚠️  Change this password immediately after first login!');
+    // Check if user already exists
+    const existingUser = await db.getUserByEmail(email);
+    if (existingUser) {
+      return res.status(409).json({ error: 'Email already registered' });
     }
-  } catch (err) {
-    console.error('Error initializing default user:', err.message);
+
+    // Check if signup request already exists
+    const existingRequest = await db.getSignupRequest(email);
+    if (existingRequest && existingRequest.status === 'pending') {
+      return res.status(409).json({ error: 'Signup request already pending. Check your email.' });
+    }
+
+    // Create signup request
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    await db.createSignupRequest(email, token, expiresAt);
+
+    // Send verification email to admin
+    await sendSignupVerificationEmail(email, token);
+
+    res.json({
+      success: true,
+      message: 'Signup request submitted. Check your email for verification.'
+    });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: error.message });
   }
-}
+});
 
-// Initialize default user on startup
-await initializeDefaultUser();
+// Admin approves signup
+app.post('/api/admin/approve-signup/:token', async (req, res) => {
+  const { token } = req.params;
 
-// Login endpoint
-app.post('/api/auth/login', async (req, res) => {
-  const { username, password } = req.body;
+  try {
+    const signupRequest = await db.getSignupRequest(token);
+    if (!signupRequest) {
+      return res.status(404).json({ error: 'Invalid or expired token' });
+    }
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password required' });
+    if (signupRequest.status !== 'pending') {
+      return res.status(400).json({ error: 'Signup request already processed' });
+    }
+
+    // Approve signup
+    await db.approveSignup(token);
+
+    // Generate password setup token
+    const setupToken = generateToken();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    await db.createPasswordSetupToken(signupRequest.email, setupToken, expiresAt);
+
+    // Send password setup email
+    await sendPasswordSetupEmail(signupRequest.email, setupToken);
+
+    res.json({
+      success: true,
+      message: `Signup approved. Password setup email sent to ${signupRequest.email}`
+    });
+  } catch (error) {
+    console.error('Approval error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin rejects signup
+app.post('/api/admin/reject-signup/:token', async (req, res) => {
+  const { token } = req.params;
+
+  try {
+    const signupRequest = await db.getSignupRequest(token);
+    if (!signupRequest) {
+      return res.status(404).json({ error: 'Invalid or expired token' });
+    }
+
+    // Reject signup
+    await db.rejectSignup(token);
+
+    // Send rejection email
+    await sendSignupApprovedEmail(signupRequest.email);
+
+    res.json({
+      success: true,
+      message: `Signup rejected. Notification sent to ${signupRequest.email}`
+    });
+  } catch (error) {
+    console.error('Rejection error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Set password after approval
+app.post('/api/auth/set-password/:token', async (req, res) => {
+  const { token } = req.params;
+  const { password, confirmPassword } = req.body;
+
+  if (!password || !confirmPassword) {
+    return res.status(400).json({ error: 'Password required' });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: 'Passwords do not match' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
 
   try {
-    const user = await db.getUserByUsername(username);
-    if (!user) {
+    const setupToken = await db.getPasswordSetupToken(token);
+    if (!setupToken) {
+      return res.status(404).json({ error: 'Invalid or expired token' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user
+    const user = await db.createUser(setupToken.email, hashedPassword, true);
+
+    // Mark setup token as used
+    await db.markPasswordSetupTokenUsed(token);
+
+    // Log user in
+    req.session.userId = user.id;
+    req.session.userEmail = user.email;
+
+    res.json({
+      success: true,
+      message: 'Password set successfully. You are now logged in.'
+    });
+  } catch (error) {
+    console.error('Password setup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  try {
+    const user = await db.getUserByEmail(email);
+    if (!user || !user.password_hash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -120,14 +260,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     req.session.userId = user.id;
-    req.session.username = user.username;
-    res.json({ success: true, username: user.username });
+    req.session.userEmail = user.email;
+    res.json({
+      success: true,
+      email: user.email
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Logout endpoint
+// Logout
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
@@ -140,34 +283,91 @@ app.post('/api/auth/logout', (req, res) => {
 // Check auth status
 app.get('/api/auth/status', (req, res) => {
   if (req.session.userId) {
-    res.json({ authenticated: true, username: req.session.username });
+    res.json({ authenticated: true, email: req.session.userEmail });
   } else {
     res.json({ authenticated: false });
   }
 });
 
-// Change password endpoint
-app.post('/api/auth/change-password', requireAuth, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
+// Forgot password
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
 
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({ error: 'Current and new password required' });
+  if (!email) {
+    return res.status(400).json({ error: 'Email required' });
   }
 
   try {
-    const user = await db.getUserByUsername(req.session.username);
-    const validPassword = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
+    const user = await db.getUserByEmail(email);
+    if (!user) {
+      // Don't reveal if email exists
+      return res.json({
+        success: true,
+        message: 'If email exists, password reset link will be sent'
+      });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await db.updateUserPassword(req.session.username, hashedPassword);
-    res.json({ success: true });
+    // Create reset token
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await db.createPasswordResetToken(user.id, token, expiresAt);
+
+    // Send reset email
+    await sendPasswordResetEmail(email, token);
+
+    res.json({
+      success: true,
+      message: 'Password reset email sent if account exists'
+    });
   } catch (error) {
+    console.error('Forgot password error:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
+// Reset password
+app.post('/api/auth/reset-password/:token', async (req, res) => {
+  const { token } = req.params;
+  const { password, confirmPassword } = req.body;
+
+  if (!password || !confirmPassword) {
+    return res.status(400).json({ error: 'Password required' });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: 'Passwords do not match' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  try {
+    const resetToken = await db.getPasswordResetToken(token);
+    if (!resetToken) {
+      return res.status(404).json({ error: 'Invalid or expired token' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update password
+    await db.updateUserPassword(resetToken.user_id, hashedPassword);
+
+    // Mark token as used
+    await db.markPasswordResetTokenUsed(token);
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully. You can now login.'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ PROTECTED ENDPOINTS ============
 
 // Upload and process file (protected)
 app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => {
@@ -188,7 +388,6 @@ app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => 
       reportHTML = generateReport(filePath, originalName);
     } catch (error) {
       console.error('Error generating report:', error);
-      // Fallback to error message
       reportHTML = `
 <!DOCTYPE html>
 <html>
@@ -205,17 +404,14 @@ app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => 
     <h3>Report Generation Error</h3>
     <p>Could not process file: ${originalName}</p>
     <p>${error.message}</p>
-    <p>Please ensure the Excel file has the correct structure with columns: Account, Project Status, Project Overall, etc.</p>
   </div>
 </body>
 </html>
       `;
     }
 
-    // Save to database
     await db.saveReport(reportId, originalName, uploadTime, reportHTML);
 
-    // Clean up temp file
     fs.unlink(filePath, (err) => {
       if (err) console.error('Error deleting temp file:', err);
     });

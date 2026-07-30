@@ -26,9 +26,39 @@ export async function initializeDB() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255),
+        verified BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS signup_requests (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        approved_at TIMESTAMP,
+        rejected_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS password_setup_tokens (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        used_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        token VARCHAR(255) UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        used_at TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS reports (
@@ -136,14 +166,14 @@ export const db = {
     }
   },
 
-  async createUser(username, passwordHash) {
+  async createUser(email, passwordHash, verified = true) {
     if (!this.isReady()) {
       throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
     }
     try {
       const result = await pool.query(
-        'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username;',
-        [username, passwordHash]
+        'INSERT INTO users (email, password_hash, verified) VALUES ($1, $2, $3) RETURNING id, email;',
+        [email, passwordHash, verified]
       );
       return result.rows[0];
     } catch (err) {
@@ -152,18 +182,210 @@ export const db = {
     }
   },
 
-  async getUserByUsername(username) {
+  async createPasswordSetupToken(email, token, expiresAt) {
     if (!this.isReady()) {
       throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
     }
     try {
       const result = await pool.query(
-        'SELECT id, username, password_hash FROM users WHERE username = $1;',
-        [username]
+        `INSERT INTO password_setup_tokens (email, token, expires_at)
+         VALUES ($1, $2, $3)
+         RETURNING id, token;`,
+        [email, token, expiresAt]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error creating password setup token:', err.message);
+      throw err;
+    }
+  },
+
+  async getPasswordSetupToken(token) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `SELECT id, email, token, expires_at FROM password_setup_tokens
+         WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL;`,
+        [token]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error getting password setup token:', err.message);
+      throw err;
+    }
+  },
+
+  async markPasswordSetupTokenUsed(token) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      await pool.query(
+        `UPDATE password_setup_tokens SET used_at = NOW()
+         WHERE token = $1;`,
+        [token]
+      );
+    } catch (err) {
+      console.error('Error marking setup token used:', err.message);
+      throw err;
+    }
+  },
+
+  async getUserByEmail(email) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        'SELECT id, email, password_hash, verified FROM users WHERE email = $1;',
+        [email]
       );
       return result.rows[0];
     } catch (err) {
       console.error('Error getting user:', err.message);
+      throw err;
+    }
+  },
+
+  async createSignupRequest(email, token, expiresAt) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `INSERT INTO signup_requests (email, token, expires_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, status = 'pending'
+         RETURNING id, email, token;`,
+        [email, token, expiresAt]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error creating signup request:', err.message);
+      throw err;
+    }
+  },
+
+  async getSignupRequest(token) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `SELECT id, email, token, status, expires_at FROM signup_requests
+         WHERE token = $1 AND expires_at > NOW();`,
+        [token]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error getting signup request:', err.message);
+      throw err;
+    }
+  },
+
+  async approveSignup(token) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `UPDATE signup_requests SET status = 'approved', approved_at = NOW()
+         WHERE token = $1 AND status = 'pending'
+         RETURNING email;`,
+        [token]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error approving signup:', err.message);
+      throw err;
+    }
+  },
+
+  async rejectSignup(token) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `UPDATE signup_requests SET status = 'rejected', rejected_at = NOW()
+         WHERE token = $1 AND status = 'pending'
+         RETURNING email;`,
+        [token]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error rejecting signup:', err.message);
+      throw err;
+    }
+  },
+
+  async getApprovedSignup(email) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `SELECT id, email, status FROM signup_requests
+         WHERE email = $1 AND status = 'approved'
+         ORDER BY approved_at DESC LIMIT 1;`,
+        [email]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error getting approved signup:', err.message);
+      throw err;
+    }
+  },
+
+  async createPasswordResetToken(userId, token, expiresAt) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `INSERT INTO password_reset_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, $3)
+         RETURNING id, token;`,
+        [userId, token, expiresAt]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error creating password reset token:', err.message);
+      throw err;
+    }
+  },
+
+  async getPasswordResetToken(token) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `SELECT id, user_id, token, expires_at FROM password_reset_tokens
+         WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL;`,
+        [token]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error getting password reset token:', err.message);
+      throw err;
+    }
+  },
+
+  async markPasswordResetTokenUsed(token) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      await pool.query(
+        `UPDATE password_reset_tokens SET used_at = NOW()
+         WHERE token = $1;`,
+        [token]
+      );
+    } catch (err) {
+      console.error('Error marking token used:', err.message);
       throw err;
     }
   },

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import './Login.css';
+import './AuthForm.css';
 
-export default function Login({ onLoginSuccess }) {
-  const [username, setUsername] = useState('');
+export default function Login({ onLoginSuccess, onSwitchToSignup, onSwitchToForgotPassword }) {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -15,12 +16,12 @@ export default function Login({ onLoginSuccess }) {
 
     try {
       const response = await axios.post('/api/auth/login', {
-        username,
+        email,
         password
       });
 
       if (response.data.success) {
-        onLoginSuccess(response.data.username);
+        onLoginSuccess(response.data.email);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
@@ -30,20 +31,20 @@ export default function Login({ onLoginSuccess }) {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-box">
+    <div className="auth-container">
+      <div className="auth-box">
         <h1>DX Project Portfolio</h1>
-        <p className="login-subtitle">Secure Report Management</p>
+        <p className="auth-subtitle">Secure Report Management</p>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="email">Email Address</label>
             <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username"
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your.email@company.com"
               disabled={loading}
               required
             />
@@ -51,15 +52,24 @@ export default function Login({ onLoginSuccess }) {
 
           <div className="form-group">
             <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              disabled={loading}
-              required
-            />
+            <div className="password-input-group">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                disabled={loading}
+                required
+              />
+              <button
+                type="button"
+                className="toggle-password"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
           </div>
 
           {error && <div className="error-message">{error}</div>}
@@ -67,16 +77,20 @@ export default function Login({ onLoginSuccess }) {
           <button
             type="submit"
             disabled={loading}
-            className="login-button"
+            className="auth-button"
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
 
-        <div className="login-info">
-          <p>Default credentials:</p>
-          <p>Username: <code>admin</code></p>
-          <p>Password: Check server logs or environment variable DEFAULT_PASSWORD</p>
+        <div className="auth-footer">
+          <p>
+            <button onClick={onSwitchToForgotPassword} className="link-button">Forgot Password?</button>
+          </p>
+          <hr />
+          <p>
+            Don't have an account? <button onClick={onSwitchToSignup} className="link-button">Request Access</button>
+          </p>
         </div>
       </div>
     </div>
