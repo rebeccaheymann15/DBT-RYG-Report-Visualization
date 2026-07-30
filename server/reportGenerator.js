@@ -8,12 +8,13 @@ export function generateReport(filePath, fileName) {
     const sheet = workbook.Sheets[sheetName];
     const data = XLSX.utils.sheet_to_json(sheet);
 
-    // Parse portfolio data - filter for In Progress only
+    // Parse portfolio data
+    console.log(`Total rows in Excel: ${data.length}`);
+    if (data.length > 0) {
+      console.log('Column names:', Object.keys(data[0]));
+    }
+
     const projects = data
-      .filter(row => {
-        const projectStatus = row['Project Status'] || '';
-        return projectStatus.trim() === 'In Progress';
-      })
       .map(row => ({
         projectName: row['Project Name'] || 'Unknown',
         account: row['Account'] || 'Unknown',
