@@ -107,7 +107,9 @@ export default function App() {
     formData.append('file', file);
 
     try {
-      const response = await axios.post('/api/upload', formData);
+      const response = await axios.post('/api/upload', formData, {
+        withCredentials: true
+      });
       setSelectedReport(response.data.id);
       await fetchUploads();
     } catch (err) {
