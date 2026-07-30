@@ -32,8 +32,10 @@ export async function initializeDB() {
 
       if (result.rows.length > 0) {
         console.log('⚠️  Migrating old users table schema...');
-        // Drop old users table and related foreign keys
+        // Drop old tables and related foreign keys
         await pool.query('DROP TABLE IF EXISTS password_reset_tokens CASCADE');
+        await pool.query('DROP TABLE IF EXISTS password_setup_tokens CASCADE');
+        await pool.query('DROP TABLE IF EXISTS signup_requests CASCADE');
         await pool.query('DROP TABLE IF EXISTS users CASCADE');
         console.log('✓ Dropped old schema, recreating with new structure');
       }
