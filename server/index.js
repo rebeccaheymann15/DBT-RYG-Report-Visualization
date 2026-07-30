@@ -175,7 +175,9 @@ app.post('/api/admin/approve-signup/:token', async (req, res) => {
 
     res.json({
       success: true,
-      message: `Signup approved. Password setup email sent to ${signupRequest.email}`
+      message: `Signup approved. Password setup email sent to ${signupRequest.email}`,
+      setupToken: setupToken,
+      setupLink: `${process.env.APP_URL || 'http://localhost:5000'}/setup-password/${setupToken}`
     });
   } catch (error) {
     console.error('Approval error:', error);

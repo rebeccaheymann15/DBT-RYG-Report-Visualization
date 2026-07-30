@@ -7,6 +7,7 @@ export default function AdminApproval() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [setupLink, setSetupLink] = useState('');
 
   useEffect(() => {
     fetchPendingSignups();
@@ -27,10 +28,12 @@ export default function AdminApproval() {
 
   const handleApprove = async (token, email) => {
     try {
-      await axios.post(`/api/admin/approve-signup/${token}`);
+      const response = await axios.post(`/api/admin/approve-signup/${token}`);
+      const setupToken = response.data.setupToken;
+      const link = `${window.location.origin}/setup-password/${setupToken}`;
+      setSetupLink(link);
       setMessage(`✓ Approved ${email}`);
       await fetchPendingSignups();
-      setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to approve');
     }
@@ -59,6 +62,36 @@ export default function AdminApproval() {
 
       {error && <div className="admin-error">{error}</div>}
       {message && <div className="admin-success">{message}</div>}
+
+      {setupLink && (
+        <div className="setup-link-box">
+          <h3>Share this link with the user:</h3>
+          <div className="link-container">
+            <input
+              type="text"
+              value={setupLink}
+              readOnly
+              className="link-input"
+            />
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(setupLink);
+                alert('Link copied to clipboard!');
+              }}
+              className="copy-btn"
+            >
+              📋 Copy
+            </button>
+          </div>
+          <p className="link-note">User has 24 hours to click this link and set their password</p>
+          <button
+            onClick={() => setSetupLink('')}
+            className="close-btn"
+          >
+            Done
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading">Loading...</div>

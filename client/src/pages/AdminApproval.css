@@ -55,6 +55,74 @@
   border: 1px solid #c8e6c9;
 }
 
+.setup-link-box {
+  background: #f0f4ff;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.setup-link-box h3 {
+  margin: 0 0 16px 0;
+  color: #1a1a3e;
+  font-size: 16px;
+}
+
+.link-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.link-input {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #333;
+}
+
+.copy-btn {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 12px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.copy-btn:hover {
+  background: #764ba2;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.link-note {
+  font-size: 12px;
+  color: #666;
+  margin: 0 0 12px 0;
+}
+
+.close-btn {
+  background: #f0f0f0;
+  color: #333;
+  border: 1px solid #ddd;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: #e0e0e0;
+}
+
 .loading {
   text-align: center;
   padding: 40px;
