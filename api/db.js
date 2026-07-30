@@ -24,6 +24,13 @@ export async function initializeDB() {
     console.log('✓ Connected to Neon PostgreSQL');
 
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS reports (
         id SERIAL PRIMARY KEY,
         report_id VARCHAR(255) UNIQUE NOT NULL,
@@ -33,6 +40,14 @@ export async function initializeDB() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS session (
+        sid varchar NOT NULL COLLATE "default",
+        sess json NOT NULL,
+        expire timestamp(6) NOT NULL,
+        PRIMARY KEY (sid)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_session_expire ON session (expire);
       CREATE INDEX IF NOT EXISTS idx_reports_id ON reports(report_id);
       CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at);
     `);
@@ -119,5 +134,56 @@ export const db = {
       console.error('Error deleting report:', err.message);
       throw err;
     }
+  },
+
+  async createUser(username, passwordHash) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username;',
+        [username, passwordHash]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error creating user:', err.message);
+      throw err;
+    }
+  },
+
+  async getUserByUsername(username) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        'SELECT id, username, password_hash FROM users WHERE username = $1;',
+        [username]
+      );
+      return result.rows[0];
+    } catch (err) {
+      console.error('Error getting user:', err.message);
+      throw err;
+    }
+  },
+
+  async updateUserPassword(username, passwordHash) {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      await pool.query(
+        'UPDATE users SET password_hash = $1 WHERE username = $2;',
+        [passwordHash, username]
+      );
+    } catch (err) {
+      console.error('Error updating password:', err.message);
+      throw err;
+    }
+  },
+
+  getPool() {
+    return pool;
   }
 };

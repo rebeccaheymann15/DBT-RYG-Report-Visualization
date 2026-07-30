@@ -1,16 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import Login from './components/Login';
 import FileUpload from './components/FileUpload';
 import ReportViewer from './components/ReportViewer';
 import UploadHistory from './components/UploadHistory';
 import './App.css';
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [username, setUsername] = useState('');
   const [uploads, setUploads] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dbReady, setDbReady] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await axios.get('/api/auth/status');
+        if (response.data.authenticated) {
+          setAuthenticated(true);
+          setUsername(response.data.username);
+        }
+      } catch (err) {
+        console.error('Auth check failed:', err);
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   // Check database status on mount
   useEffect(() => {
@@ -28,12 +51,12 @@ export default function App() {
     checkHealth();
   }, []);
 
-  // Fetch upload history on mount
+  // Fetch upload history when authenticated
   useEffect(() => {
-    if (dbReady) {
+    if (authenticated && dbReady) {
       fetchUploads();
     }
-  }, [dbReady]);
+  }, [authenticated, dbReady]);
 
   const fetchUploads = async () => {
     try {
@@ -67,11 +90,44 @@ export default function App() {
     }
   };
 
+  const handleLoginSuccess = (user) => {
+    setAuthenticated(true);
+    setUsername(user);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await axios.post('/api/auth/logout');
+      setAuthenticated(false);
+      setUsername('');
+      setUploads([]);
+      setSelectedReport(null);
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
+
+  if (checkingAuth) {
+    return <div className="app-loading">Loading...</div>;
+  }
+
+  if (!authenticated) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>DBT RYG Report Visualization</h1>
-        <p className="subtitle">Import Excel files to generate visual reports</p>
+        <div className="header-content">
+          <div>
+            <h1>DBT RYG Report Visualization</h1>
+            <p className="subtitle">Import Excel files to generate visual reports</p>
+          </div>
+          <div className="header-actions">
+            <span className="user-info">Logged in as: <strong>{username}</strong></span>
+            <button className="logout-button" onClick={handleLogout}>Logout</button>
+          </div>
+        </div>
       </header>
 
       <main className="app-main">

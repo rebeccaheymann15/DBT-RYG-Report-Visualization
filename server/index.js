@@ -4,6 +4,9 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcrypt';
+import session from 'express-session';
+import pgSession from 'connect-pg-simple';
 import { db, initializeDB } from '../api/db.js';
 import { generateReport } from './reportGenerator.js';
 
@@ -14,13 +17,35 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Initialize database on startup
-initializeDB();
+await initializeDB();
 
 // Create temporary upload directory for file processing
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+// Session store using PostgreSQL
+const pgSessionStore = pgSession(session);
+const sessionStore = new pgSessionStore({
+  pool: db.getPool(),
+  createTableIfMissing: true,
+  tableName: 'session'
+});
+
+// Session middleware
+const sessionMiddleware = session({
+  store: sessionStore,
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 24 * 60 * 60 * 1000
+  }
+});
 
 // Multer config for file uploads
 const storage = multer.diskStorage({
@@ -43,11 +68,109 @@ const upload = multer({
   }
 });
 
-app.use(cors());
+app.use(sessionMiddleware);
+app.use(cors({ credentials: true }));
 app.use(express.json());
 
-// Upload and process file
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+// Middleware to check if user is authenticated
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  next();
+}
+
+// Initialize default user if needed
+async function initializeDefaultUser() {
+  try {
+    const existing = await db.getUserByUsername('admin');
+    if (!existing) {
+      const defaultPassword = process.env.DEFAULT_PASSWORD || 'admin123';
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+      await db.createUser('admin', hashedPassword);
+      console.log('✓ Default user "admin" created');
+      console.log(`  Default password: ${defaultPassword}`);
+      console.log('  ⚠️  Change this password immediately after first login!');
+    }
+  } catch (err) {
+    console.error('Error initializing default user:', err.message);
+  }
+}
+
+// Initialize default user on startup
+await initializeDefaultUser();
+
+// Login endpoint
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  try {
+    const user = await db.getUserByUsername(username);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    res.json({ success: true, username: user.username });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Logout endpoint
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Logout failed' });
+    }
+    res.json({ success: true });
+  });
+});
+
+// Check auth status
+app.get('/api/auth/status', (req, res) => {
+  if (req.session.userId) {
+    res.json({ authenticated: true, username: req.session.username });
+  } else {
+    res.json({ authenticated: false });
+  }
+});
+
+// Change password endpoint
+app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new password required' });
+  }
+
+  try {
+    const user = await db.getUserByUsername(req.session.username);
+    const validPassword = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.updateUserPassword(req.session.username, hashedPassword);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload and process file (protected)
+app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
@@ -108,8 +231,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// Get upload history
-app.get('/api/uploads', async (req, res) => {
+// Get upload history (protected)
+app.get('/api/uploads', requireAuth, async (req, res) => {
   try {
     const files = await db.getAllReports();
     res.json(files);
@@ -118,8 +241,8 @@ app.get('/api/uploads', async (req, res) => {
   }
 });
 
-// Get specific report
-app.get('/api/report/:id', async (req, res) => {
+// Get specific report (protected)
+app.get('/api/report/:id', requireAuth, async (req, res) => {
   try {
     const report = await db.getReport(req.params.id);
     if (report) {
