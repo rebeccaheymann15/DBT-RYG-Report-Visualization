@@ -8,6 +8,7 @@ import ForgotPassword from './components/ForgotPassword';
 import FileUpload from './components/FileUpload';
 import ReportViewer from './components/ReportViewer';
 import UploadHistory from './components/UploadHistory';
+import AdminApproval from './pages/AdminApproval';
 import './App.css';
 
 export default function App() {
@@ -22,11 +23,14 @@ export default function App() {
   const [authMode, setAuthMode] = useState('login'); // login, signup, forgotPassword
   const [setupToken, setSetupToken] = useState(null);
   const [resetToken, setResetToken] = useState(null);
+  const [isAdminMode, setIsAdminMode] = useState(false);
 
   // Check for setup or reset tokens in URL on mount
   useEffect(() => {
     const path = window.location.pathname;
-    if (path.startsWith('/setup-password/')) {
+    if (path === '/admin') {
+      setIsAdminMode(true);
+    } else if (path.startsWith('/setup-password/')) {
       const token = path.replace('/setup-password/', '');
       setSetupToken(token);
       setAuthMode('setup');
@@ -141,6 +145,31 @@ export default function App() {
 
   if (checkingAuth) {
     return <div className="app-loading">Loading...</div>;
+  }
+
+  // Admin approval page (no auth required)
+  if (isAdminMode) {
+    return (
+      <div className="app-container">
+        <header className="app-header">
+          <div className="header-content">
+            <h1>Admin Panel</h1>
+            <button
+              className="logout-button"
+              onClick={() => {
+                setIsAdminMode(false);
+                window.history.pushState({}, '', '/');
+              }}
+            >
+              ← Back
+            </button>
+          </div>
+        </header>
+        <main className="app-main">
+          <AdminApproval />
+        </main>
+      </div>
+    );
   }
 
   if (!authenticated) {
