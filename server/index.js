@@ -86,6 +86,11 @@ function generateToken() {
 
 // Middleware to check if user is authenticated
 function requireAuth(req, res, next) {
+  console.log('Auth check - session:', {
+    sessionId: req.sessionID,
+    userId: req.session?.userId,
+    cookies: req.headers.cookie?.substring(0, 100)
+  });
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
