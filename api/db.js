@@ -23,6 +23,24 @@ export async function initializeDB() {
     await pool.query('SELECT NOW()');
     console.log('✓ Connected to Neon PostgreSQL');
 
+    // Check if old users table exists with username column and migrate
+    try {
+      const result = await pool.query(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'users' AND column_name = 'username'
+      `);
+
+      if (result.rows.length > 0) {
+        console.log('⚠️  Migrating old users table schema...');
+        // Drop old users table and related foreign keys
+        await pool.query('DROP TABLE IF EXISTS password_reset_tokens CASCADE');
+        await pool.query('DROP TABLE IF EXISTS users CASCADE');
+        console.log('✓ Dropped old schema, recreating with new structure');
+      }
+    } catch (err) {
+      // Table might not exist yet, that's fine
+    }
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
