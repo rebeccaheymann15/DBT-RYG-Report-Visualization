@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+
+// Configure axios to send cookies with requests
+axios.defaults.withCredentials = true;
 import Login from './components/Login';
 import Signup from './components/Signup';
 import PasswordSetup from './components/PasswordSetup';

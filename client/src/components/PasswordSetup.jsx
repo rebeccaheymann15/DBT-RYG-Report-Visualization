@@ -27,15 +27,19 @@ export default function PasswordSetup({ token, onSuccess }) {
     }
 
     try {
+      console.log('Setting password...');
       const response = await axios.post(`/api/auth/set-password/${token}`, {
         password,
         confirmPassword
       });
 
+      console.log('Password setup response:', response.data);
       if (response.data.success) {
-        onSuccess();
+        console.log('Password setup successful, calling onSuccess');
+        onSuccess(response.data.email);
       }
     } catch (err) {
+      console.error('Password setup error:', err);
       setError(err.response?.data?.error || 'Failed to set password');
     } finally {
       setLoading(false);
