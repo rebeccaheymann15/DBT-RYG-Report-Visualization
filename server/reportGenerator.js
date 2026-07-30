@@ -8,61 +8,40 @@ export function generateReport(filePath, fileName) {
     const sheet = workbook.Sheets[sheetName];
     const data = XLSX.utils.sheet_to_json(sheet);
 
-    // Parse portfolio data
-    const reports = data
+    // Parse portfolio data - filter for In Progress only
+    const projects = data
       .filter(row => {
         const projectStatus = row['Project Status'] || '';
         return projectStatus.trim() === 'In Progress';
       })
       .map(row => ({
+        projectName: row['Project Name'] || 'Unknown',
         account: row['Account'] || 'Unknown',
-        projectName: row['Project Name'] || '',
-        projectManager: row['Project Manager'] || 'Unassigned',
-        status: normalizeStatus(row['Project Overall'] || ''),
+        projectManager: row['Project Manager'] || 'TBD',
+        accountManager: row['Account Manager'] || '',
+        billingType: row['Billing Type'] || '',
+        coa: (row['COA'] || '').toLowerCase(),
+        executiveOversight: row['Executive Oversight'] || 'No',
+        statusUpdated: row['Status Updated'] || new Date().toLocaleDateString(),
+        overallStatus: normalizeStatus(row['Project Overall'] || ''),
+        financials: normalizeStatus(row['Financials'] || ''),
+        scope: normalizeStatus(row['Scope'] || ''),
+        quality: normalizeStatus(row['Quality'] || ''),
+        resources: normalizeStatus(row['Resources'] || ''),
+        schedule: normalizeStatus(row['Schedule'] || ''),
+        clientRelationship: normalizeStatus(row['Client Relationship'] || ''),
         eacMargin: parseFloat(row['EAC Margin %']) || 0,
         pmSummary: row['PM Status Summary'] || '',
         leadCommentary: row['Lead Commentary'] || '',
-        coa: row['COA'] || '',
-        waoc: row['WAOC'] || 'No',
-        financials: row['Financials'] || '',
-        scope: row['Scope'] || '',
-        quality: row['Quality'] || '',
-        resources: row['Resources'] || '',
-        schedule: row['Schedule'] || '',
-        clientRelationship: row['Client Relationship'] || ''
+        waoc: row['WAOC'] || 'No'
       }));
 
-    // Count by status
-    const redCount = reports.filter(r => r.status === 'red').length;
-    const yellowCount = reports.filter(r => r.status === 'yellow').length;
-    const greenCount = reports.filter(r => r.status === 'green').length;
-    const totalCount = reports.length;
-
-    // Get red accounts
-    const redAccounts = reports.filter(r => r.status === 'red');
-
-    // Get top yellow accounts (with priority logic)
-    const yellowAccounts = reports
-      .filter(r => r.status === 'yellow')
-      .sort((a, b) => {
-        // Priority: red sub-flags, negative margin, no PM, client relationship issues, WAOC
-        const aScore = getYellowPriority(a);
-        const bScore = getYellowPriority(b);
-        return bScore - aScore;
-      })
-      .slice(0, 6);
+    // Get unique COAs for filter
+    const coaSet = new Set(projects.map(p => p.coa).filter(c => c));
+    const coaList = Array.from(coaSet).sort();
 
     // Generate HTML
-    const html = generateHTML({
-      fileName,
-      totalCount,
-      redCount,
-      yellowCount,
-      greenCount,
-      redAccounts,
-      yellowAccounts
-    });
-
+    const html = generateHTML(projects, coaList, fileName);
     return html;
   } catch (error) {
     console.error('Error generating report:', error);
@@ -72,208 +51,202 @@ export function generateReport(filePath, fileName) {
 
 function normalizeStatus(value) {
   const lower = (value || '').toLowerCase();
-  if (lower.includes('red')) return 'red';
-  if (lower.includes('yellow') || lower.includes('amber')) return 'yellow';
-  if (lower.includes('green')) return 'green';
-  return 'no-status';
+  if (lower.includes('red')) return 'Red';
+  if (lower.includes('yellow') || lower.includes('amber')) return 'Yellow';
+  if (lower.includes('green')) return 'Green';
+  return 'Gray';
 }
 
-function getYellowPriority(account) {
-  let score = 0;
-  if (account.financials?.toLowerCase().includes('red')) score += 100;
-  if (account.schedule?.toLowerCase().includes('red')) score += 100;
-  if (account.eacMargin < 0) score += 50;
-  if (account.projectManager === 'Unassigned') score += 50;
-  if (account.clientRelationship?.toLowerCase().includes('red')) score += 30;
-  if (account.waoc === 'Yes') score += 20;
-  return score;
+function getStatusColor(status) {
+  switch(status) {
+    case 'Green': return { bg: '#EAF3DE', border: '#639922', text: '#173404' };
+    case 'Yellow': return { bg: '#FEF3C7', border: '#D97706', text: '#92400E' };
+    case 'Red': return { bg: '#FEE2E2', border: '#DC2626', text: '#7F1D1D' };
+    default: return { bg: '#F3F4F6', border: '#D1D5DB', text: '#374151' };
+  }
 }
 
-function generateHTML({ fileName, totalCount, redCount, yellowCount, greenCount, redAccounts, yellowAccounts }) {
-  const today = new Date();
-  const weekOf = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+function generateHTML(projects, coaList, fileName) {
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  const formattedTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  const projectCards = projects.map((project, idx) => {
+    const overallColor = getStatusColor(project.overallStatus);
+    const statuses = [
+      { label: 'Overall project', value: project.overallStatus },
+      { label: 'Financials', value: project.financials },
+      { label: 'Scope', value: project.scope },
+      { label: 'Quality', value: project.quality },
+      { label: 'Resources', value: project.resources },
+      { label: 'Schedule', value: project.schedule },
+      { label: 'Client relationship', value: project.clientRelationship }
+    ];
+
+    return `
+    <section class="card" data-coa="${project.coa}">
+      <div class="card-header">
+        <div>
+          <h2>${project.projectName}</h2>
+          <div class="subline">${project.account}</div>
+        </div>
+        <div class="header-meta">
+          <div><span class="meta-label">Status updated</span> ${project.statusUpdated}</div>
+          <div><span class="meta-label">Data refreshed</span> ${formattedDate}</div>
+        </div>
+      </div>
+
+      <div class="status-row">
+        ${statuses.map(s => {
+          const color = getStatusColor(s.value);
+          return `
+        <div class="status-box" style="background:${color.bg}; color:${color.text}; border:1px solid ${color.border};">
+          <div class="status-label">${s.label}</div>
+          <div class="status-value">${s.value}</div>
+        </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="info-grid">
+        <div><span class="meta-label">Project manager</span><br>${project.projectManager}</div>
+        <div><span class="meta-label">Account manager</span><br>${project.accountManager || 'TBD'}</div>
+        <div><span class="meta-label">Billing type</span><br>${project.billingType || 'N/A'}</div>
+        <div><span class="meta-label">COA</span><br>${project.coa.toUpperCase()}</div>
+        <div><span class="meta-label">Executive oversight</span><br>${project.executiveOversight}</div>
+      </div>
+
+      ${project.pmSummary || project.leadCommentary ? `
+      <div>
+        ${project.pmSummary ? `
+        <div>
+          <div class="summary-label">PM Status Summary</div>
+          <div class="summary-text">${project.pmSummary}</div>
+        </div>
+        ` : ''}
+        ${project.leadCommentary ? `
+        <div class="commentary">
+          <div class="commentary-label">Lead Commentary</div>
+          <div class="commentary-text">${project.leadCommentary}</div>
+        </div>
+        ` : ''}
+      </div>
+      ` : ''}
+    </section>
+    `;
+  }).join('');
+
+  const coaCheckboxes = coaList.map(coa => {
+    const displayName = coa === 'xd' ? 'XD' : coa === 'dpe' ? 'DPE' : coa.charAt(0).toUpperCase() + coa.slice(1);
+    return `<label class="coa-chip" data-value="${coa}"><input type="checkbox" value="${coa}"> ${displayName}</label>`;
+  }).join('');
 
   return `
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DBT Delivery Health Report</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      color: #333;
-      padding: 20px;
-    }
-    .container { max-width: 1200px; margin: 0 auto; }
-    .header {
-      background: #1a1a3e;
-      color: white;
-      padding: 30px;
-      border-radius: 8px;
-      margin-bottom: 30px;
-      text-align: center;
-    }
-    .header h1 { font-size: 28px; margin-bottom: 10px; }
-    .header p { font-size: 14px; opacity: 0.9; }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
-    }
-    .stat-box {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      text-align: center;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .stat-box .number {
-      font-size: 32px;
-      font-weight: bold;
-      margin: 10px 0;
-    }
-    .stat-box .label { color: #666; font-size: 12px; }
-    .stat-box.red .number { color: #d32f2f; }
-    .stat-box.yellow .number { color: #f57c00; }
-    .stat-box.green .number { color: #388e3c; }
-    .chart-container {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 30px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      max-width: 400px;
-    }
-    .chart-container canvas { max-width: 100%; }
-    .section {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .section h2 {
-      color: #1a1a3e;
-      margin-bottom: 15px;
-      font-size: 18px;
-      border-bottom: 2px solid #eee;
-      padding-bottom: 10px;
-    }
-    .account-card {
-      border-left: 4px solid #ddd;
-      padding: 15px;
-      margin-bottom: 15px;
-      background: #fafafa;
-    }
-    .account-card.red { border-left-color: #d32f2f; }
-    .account-card.yellow { border-left-color: #f57c00; }
-    .account-card.green { border-left-color: #388e3c; }
-    .account-name { font-weight: bold; font-size: 14px; margin-bottom: 5px; }
-    .account-details { font-size: 12px; color: #666; }
-    .footer {
-      text-align: center;
-      color: #999;
-      font-size: 12px;
-      margin-top: 30px;
-      padding-top: 20px;
-      border-top: 1px solid #eee;
-    }
-  </style>
+<meta charset="utf-8">
+<title>DX Project Portfolio</title>
+<style>
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; background:#F1EFE8; margin:0; padding:32px; color:#2C2C2A; }
+  .page-title { font-size:22px; font-weight:600; margin-bottom:4px; }
+  .page-subtitle { font-size:13px; color:#5F5E5A; margin-bottom:24px; }
+  .card { background:#fff; border:1px solid #D3D1C7; border-radius:8px; padding:20px 24px; margin-bottom:24px; }
+  .card.hidden { display:none; }
+  .card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:8px; }
+  .card-header h2 { font-size:18px; margin:0; }
+  .subline { font-size:13px; color:#5F5E5A; margin-top:2px; }
+  .header-meta { text-align:right; font-size:13px; line-height:1.6; }
+  .meta-label { font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:#888780; display:block; }
+  .status-row { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .status-box { flex:1; min-width:110px; border-radius:6px; padding:8px 10px; }
+  .status-label { font-size:11px; font-weight:600; }
+  .status-value { font-size:13px; margin-top:2px; }
+  .info-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; font-size:13px; margin-bottom:16px; border-top:1px solid #E1E0D9; border-bottom:1px solid #E1E0D9; padding:12px 0; }
+  .summary-label, .commentary-label { font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:#888780; margin-bottom:4px; margin-top:12px; }
+  .summary-text, .commentary-text { font-size:13px; line-height:1.5; }
+  .commentary { margin-top:12px; }
+  .filter-bar { display:flex; align-items:flex-start; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+  .filter-bar > label { font-size:13px; font-weight:600; padding-top:8px; }
+  .coa-checks { display:flex; gap:6px; flex-wrap:wrap; }
+  .coa-chip { display:flex; align-items:center; gap:5px; font-size:13px; border:1px solid #B4B2A9; border-radius:999px; padding:5px 12px; cursor:pointer; background:#fff; user-select:none; }
+  .coa-chip input { margin:0; }
+  .coa-chip.checked { background:#E6F1FB; border-color:#378ADD; color:#0C447C; }
+  .clear-btn { font-size:12px; color:#5F5E5A; background:none; border:1px solid #D3D1C7; border-radius:6px; padding:5px 10px; cursor:pointer; }
+  .no-results { font-size:14px; color:#5F5E5A; padding:24px; text-align:center; display:none; }
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>DBT Delivery Health Report</h1>
-      <p>Week of ${weekOf}</p>
-      <p style="font-size: 12px; margin-top: 10px;">Source: ${fileName}</p>
-    </div>
+  <div class="page-title">DX project portfolio</div>
+  <div class="page-subtitle">${projects.length} project(s) total · generated ${formattedDate} ${formattedTime} from ${fileName}</div>
 
-    <div class="stats">
-      <div class="stat-box">
-        <div class="label">Total Projects</div>
-        <div class="number">${totalCount}</div>
-      </div>
-      <div class="stat-box green">
-        <div class="label">Green</div>
-        <div class="number">${greenCount}</div>
-      </div>
-      <div class="stat-box yellow">
-        <div class="label">Yellow</div>
-        <div class="number">${yellowCount}</div>
-      </div>
-      <div class="stat-box red">
-        <div class="label">Red</div>
-        <div class="number">${redCount}</div>
-      </div>
+  <div class="filter-bar">
+    <label>Filter by COA</label>
+    <div class="coa-checks" id="coa-checks">
+      ${coaCheckboxes}
     </div>
-
-    <div class="chart-container">
-      <canvas id="statusChart"></canvas>
-    </div>
-
-    ${redAccounts.length > 0 ? `
-    <div class="section">
-      <h2>Red Projects (${redAccounts.length})</h2>
-      ${redAccounts.map(account => `
-        <div class="account-card red">
-          <div class="account-name">${account.account}</div>
-          <div class="account-details">
-            <p><strong>${account.projectName}</strong></p>
-            <p>PM: ${account.projectManager}</p>
-            ${account.pmSummary ? `<p>${account.pmSummary}</p>` : ''}
-          </div>
-        </div>
-      `).join('')}
-    </div>
-    ` : ''}
-
-    ${yellowAccounts.length > 0 ? `
-    <div class="section">
-      <h2>Emerging Risks - Yellow Projects (Top ${yellowAccounts.length} of ${yellowCount})</h2>
-      ${yellowAccounts.map(account => `
-        <div class="account-card yellow">
-          <div class="account-name">${account.account}</div>
-          <div class="account-details">
-            <p><strong>${account.projectName}</strong></p>
-            <p>PM: ${account.projectManager}</p>
-            ${account.pmSummary ? `<p>${account.pmSummary}</p>` : ''}
-          </div>
-        </div>
-      `).join('')}
-    </div>
-    ` : ''}
-
-    <div class="footer">
-      <p>Internal use only • Generated automatically • ${new Date().toLocaleString()}</p>
-    </div>
+    <button class="clear-btn" id="clear-filter" type="button">Clear</button>
+    <span id="match-count" style="font-size:13px; color:#5F5E5A;"></span>
   </div>
 
+  <div id="card-list">
+    ${projectCards}
+  </div>
+
+  <div class="no-results" id="no-results">No projects match the selected filters</div>
+
   <script>
-    const ctx = document.getElementById('statusChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Green', 'Yellow', 'Red'],
-        datasets: [{
-          data: [${greenCount}, ${yellowCount}, ${redCount}],
-          backgroundColor: ['#388e3c', '#f57c00', '#d32f2f'],
-          borderColor: '#fff',
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'bottom' }
+    const coaChecks = document.querySelectorAll('.coa-chip');
+    const clearBtn = document.getElementById('clear-filter');
+    const cardList = document.getElementById('card-list');
+    const noResults = document.getElementById('no-results');
+    const matchCount = document.getElementById('match-count');
+
+    function updateFilter() {
+      const selectedCoAs = Array.from(coaChecks)
+        .filter(chip => chip.querySelector('input').checked)
+        .map(chip => chip.dataset.value);
+
+      const cards = cardList.querySelectorAll('.card');
+      let visibleCount = 0;
+
+      cards.forEach(card => {
+        if (selectedCoAs.length === 0 || selectedCoAs.includes(card.dataset.coa)) {
+          card.classList.remove('hidden');
+          visibleCount++;
+        } else {
+          card.classList.add('hidden');
         }
-      }
+      });
+
+      noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+      matchCount.textContent = visibleCount > 0 ? \`(\${visibleCount} project(s))\` : '';
+    }
+
+    coaChecks.forEach(chip => {
+      chip.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'INPUT') {
+          e.preventDefault();
+          chip.querySelector('input').checked = !chip.querySelector('input').checked;
+        }
+        chip.classList.toggle('checked', chip.querySelector('input').checked);
+        updateFilter();
+      });
+      chip.querySelector('input').addEventListener('change', () => {
+        chip.classList.toggle('checked', chip.querySelector('input').checked);
+        updateFilter();
+      });
     });
+
+    clearBtn.addEventListener('click', () => {
+      coaChecks.forEach(chip => {
+        chip.querySelector('input').checked = false;
+        chip.classList.remove('checked');
+      });
+      updateFilter();
+    });
+
+    matchCount.textContent = \`(\${cardList.querySelectorAll('.card').length} project(s))\`;
   </script>
 </body>
 </html>
