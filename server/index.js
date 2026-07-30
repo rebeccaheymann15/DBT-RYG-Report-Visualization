@@ -76,7 +76,18 @@ const upload = multer({
 });
 
 app.use(sessionMiddleware);
-app.use(cors({ credentials: true }));
+app.use(cors({
+  credentials: true,
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or Postman)
+    // Also allow localhost for development
+    if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+    // For production, allow the same origin
+    callback(null, true);
+  }
+}));
 app.use(express.json());
 
 // Helper function to generate tokens
@@ -252,9 +263,16 @@ app.post('/api/auth/set-password/:token', async (req, res) => {
     req.session.userId = user.id;
     req.session.userEmail = user.email;
 
-    res.json({
-      success: true,
-      message: 'Password set successfully. You are now logged in.'
+    req.session.save((err) => {
+      if (err) {
+        console.error('Error saving session:', err);
+        return res.status(500).json({ error: 'Failed to save session' });
+      }
+      res.json({
+        success: true,
+        message: 'Password set successfully. You are now logged in.',
+        email: user.email
+      });
     });
   } catch (error) {
     console.error('Password setup error:', error);
@@ -283,9 +301,16 @@ app.post('/api/auth/login', async (req, res) => {
 
     req.session.userId = user.id;
     req.session.userEmail = user.email;
-    res.json({
-      success: true,
-      email: user.email
+
+    req.session.save((err) => {
+      if (err) {
+        console.error('Error saving session:', err);
+        return res.status(500).json({ error: 'Failed to save session' });
+      }
+      res.json({
+        success: true,
+        email: user.email
+      });
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
