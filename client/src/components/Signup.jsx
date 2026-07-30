@@ -10,16 +10,25 @@ export default function Signup({ onSwitchToLogin }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('Signup form submitted with email:', email);
+
     setError('');
     setSuccess('');
     setLoading(true);
 
     try {
-      const response = await axios.post('/api/auth/signup', { email });
+      console.log('Sending signup request to /api/auth/signup');
+      const response = await axios.post('/api/auth/signup', { email }, {
+        timeout: 10000 // 10 second timeout
+      });
+      console.log('Signup response:', response.data);
       setSuccess('Signup request sent! Check your email for verification.');
       setEmail('');
     } catch (err) {
-      setError(err.response?.data?.error || 'Signup failed');
+      console.error('Signup error:', err);
+      const errorMsg = err.response?.data?.error || err.message || 'Signup failed';
+      console.error('Error message:', errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
