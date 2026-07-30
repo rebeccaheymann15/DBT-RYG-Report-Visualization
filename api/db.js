@@ -54,7 +54,7 @@ export async function initializeDB() {
 
       CREATE TABLE IF NOT EXISTS signup_requests (
         id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(255) NOT NULL,
         token VARCHAR(255) UNIQUE NOT NULL,
         status VARCHAR(50) DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -274,14 +274,32 @@ export const db = {
       throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
     }
     try {
-      const result = await pool.query(
-        `INSERT INTO signup_requests (email, token, expires_at)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, status = 'pending'
-         RETURNING id, email, token;`,
-        [email, token, expiresAt]
+      // Check if signup request exists
+      const existing = await pool.query(
+        'SELECT id FROM signup_requests WHERE email = $1',
+        [email]
       );
-      return result.rows[0];
+
+      if (existing.rows.length > 0) {
+        // Update existing
+        const result = await pool.query(
+          `UPDATE signup_requests
+           SET token = $2, expires_at = $3, status = 'pending'
+           WHERE email = $1
+           RETURNING id, email, token;`,
+          [email, token, expiresAt]
+        );
+        return result.rows[0];
+      } else {
+        // Insert new
+        const result = await pool.query(
+          `INSERT INTO signup_requests (email, token, expires_at)
+           VALUES ($1, $2, $3)
+           RETURNING id, email, token;`,
+          [email, token, expiresAt]
+        );
+        return result.rows[0];
+      }
     } catch (err) {
       console.error('Error creating signup request:', err.message);
       throw err;
