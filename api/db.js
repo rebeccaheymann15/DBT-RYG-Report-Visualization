@@ -323,6 +323,24 @@ export const db = {
     }
   },
 
+  async getPendingSignups() {
+    if (!this.isReady()) {
+      throw new Error('Database not initialized. Make sure DATABASE_URL is set.');
+    }
+    try {
+      const result = await pool.query(
+        `SELECT id, email, token, status, created_at, expires_at
+         FROM signup_requests
+         WHERE status = 'pending' AND expires_at > NOW()
+         ORDER BY created_at DESC;`
+      );
+      return result.rows;
+    } catch (err) {
+      console.error('Error getting pending signups:', err.message);
+      throw err;
+    }
+  },
+
   async approveSignup(token) {
     if (!this.isReady()) {
       throw new Error('Database not initialized. Make sure DATABASE_URL is set.');

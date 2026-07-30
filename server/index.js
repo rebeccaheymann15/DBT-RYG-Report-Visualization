@@ -135,6 +135,17 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
+// Get pending signups (for manual approval)
+app.get('/api/admin/pending-signups', async (req, res) => {
+  try {
+    const signups = await db.getPendingSignups();
+    res.json(signups);
+  } catch (error) {
+    console.error('Error getting pending signups:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Admin approves signup
 app.post('/api/admin/approve-signup/:token', async (req, res) => {
   const { token } = req.params;
