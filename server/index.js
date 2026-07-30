@@ -120,8 +120,10 @@ app.post('/api/auth/signup', async (req, res) => {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     await db.createSignupRequest(email, token, expiresAt);
 
-    // Send verification email to admin
-    await sendSignupVerificationEmail(email, token);
+    // Send verification email to admin (non-blocking)
+    sendSignupVerificationEmail(email, token).catch(err => {
+      console.error('Failed to send signup verification email:', err.message);
+    });
 
     res.json({
       success: true,
@@ -155,8 +157,10 @@ app.post('/api/admin/approve-signup/:token', async (req, res) => {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     await db.createPasswordSetupToken(signupRequest.email, setupToken, expiresAt);
 
-    // Send password setup email
-    await sendPasswordSetupEmail(signupRequest.email, setupToken);
+    // Send password setup email (non-blocking)
+    sendPasswordSetupEmail(signupRequest.email, setupToken).catch(err => {
+      console.error('Failed to send password setup email:', err.message);
+    });
 
     res.json({
       success: true,
@@ -312,8 +316,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await db.createPasswordResetToken(user.id, token, expiresAt);
 
-    // Send reset email
-    await sendPasswordResetEmail(email, token);
+    // Send reset email (non-blocking)
+    sendPasswordResetEmail(email, token).catch(err => {
+      console.error('Failed to send password reset email:', err.message);
+    });
 
     res.json({
       success: true,
