@@ -29,6 +29,12 @@ if (process.env.EMAIL_SERVICE === 'gmail') {
 }
 
 async function sendSignupVerificationEmail(email, token) {
+  if (!transporter) {
+    console.warn(`⚠️  Email not sent (transporter not configured). Signup request from ${email} needs manual approval.`);
+    console.warn(`   Admin approval URL: ${APP_URL}/admin/verify-signup/${token}`);
+    return; // Don't throw, just warn and continue
+  }
+
   const approveUrl = `${APP_URL}/admin/verify-signup/${token}`;
   const denyUrl = `${APP_URL}/admin/deny-signup/${token}`;
 
@@ -53,19 +59,22 @@ async function sendSignupVerificationEmail(email, token) {
   };
 
   try {
-    if (!transporter) {
-      console.error('Email transporter not configured');
-      throw new Error('Email service not configured');
-    }
     await transporter.sendMail(mailOptions);
     console.log(`✓ Signup verification email sent to ${ADMIN_EMAIL}`);
   } catch (err) {
-    console.error('Error sending signup verification email:', err.message);
-    throw err;
+    console.error('⚠️  Error sending signup verification email:', err.message);
+    console.error(`   Signup request from ${email} created but email notification failed.`);
+    // Don't throw - let signup succeed even if email fails
   }
 }
 
 async function sendPasswordSetupEmail(email, token) {
+  if (!transporter) {
+    console.warn(`⚠️  Password setup email not sent to ${email} (transporter not configured).`);
+    console.warn(`   Setup URL: ${APP_URL}/setup-password/${token}`);
+    return;
+  }
+
   const setupUrl = `${APP_URL}/setup-password/${token}`;
 
   const mailOptions = {
@@ -87,19 +96,20 @@ async function sendPasswordSetupEmail(email, token) {
   };
 
   try {
-    if (!transporter) {
-      console.error('Email transporter not configured');
-      throw new Error('Email service not configured');
-    }
     await transporter.sendMail(mailOptions);
     console.log(`✓ Password setup email sent to ${email}`);
   } catch (err) {
-    console.error('Error sending password setup email:', err.message);
-    throw err;
+    console.error('⚠️  Error sending password setup email to ${email}:', err.message);
   }
 }
 
 async function sendPasswordResetEmail(email, token) {
+  if (!transporter) {
+    console.warn(`⚠️  Password reset email not sent to ${email} (transporter not configured).`);
+    console.warn(`   Reset URL: ${APP_URL}/reset-password/${token}`);
+    return;
+  }
+
   const resetUrl = `${APP_URL}/reset-password/${token}`;
 
   const mailOptions = {
@@ -119,19 +129,19 @@ async function sendPasswordResetEmail(email, token) {
   };
 
   try {
-    if (!transporter) {
-      console.error('Email transporter not configured');
-      throw new Error('Email service not configured');
-    }
     await transporter.sendMail(mailOptions);
     console.log(`✓ Password reset email sent to ${email}`);
   } catch (err) {
-    console.error('Error sending password reset email:', err.message);
-    throw err;
+    console.error('⚠️  Error sending password reset email to ${email}:', err.message);
   }
 }
 
 async function sendSignupApprovedEmail(email) {
+  if (!transporter) {
+    console.warn(`⚠️  Denial email not sent to ${email} (transporter not configured).`);
+    return;
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: email,
@@ -144,10 +154,9 @@ async function sendSignupApprovedEmail(email) {
   };
 
   try {
-    if (!transporter) return;
     await transporter.sendMail(mailOptions);
   } catch (err) {
-    console.error('Error sending denial email:', err.message);
+    console.error(`⚠️  Error sending denial email to ${email}:`, err.message);
   }
 }
 
