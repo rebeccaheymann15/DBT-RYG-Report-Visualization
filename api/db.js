@@ -52,7 +52,7 @@ export async function initializeDB() {
 
       CREATE TABLE IF NOT EXISTS signup_requests (
         id SERIAL PRIMARY KEY,
-        email VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
         token VARCHAR(255) UNIQUE NOT NULL,
         status VARCHAR(50) DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
