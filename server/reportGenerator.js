@@ -41,6 +41,7 @@ export function generateReport(filePath, fileName) {
           schedule: normalizeStatus(row['Schedule'] || ''),
           clientRelationship: normalizeStatus(row['Client Relationship'] || ''),
           eacMargin: parseFloat(row['EAC Margin %']) || 0,
+          odeMargin: parseFloat(row['ODE Margin %']) || 0,
           pmSummary: row['PM Status Summary'] || '',
           leadCommentary: row['Lead Commentary'] || '',
           waoc: row['WAOC'] || 'No'
@@ -87,8 +88,7 @@ function generateHTML(projects, coaList, fileName) {
 
   const projectCards = projects.map((project, idx) => {
     const overallColor = getStatusColor(project.overallStatus);
-    const statuses = [
-      { label: 'Overall project', value: project.overallStatus },
+    const otherStatuses = [
       { label: 'Financials', value: project.financials },
       { label: 'Scope', value: project.scope },
       { label: 'Quality', value: project.quality },
@@ -111,7 +111,14 @@ function generateHTML(projects, coaList, fileName) {
       </div>
 
       <div class="status-row">
-        ${statuses.map(s => {
+        <div class="status-box status-box-full" style="background:${overallColor.bg}; color:${overallColor.text}; border:1px solid ${overallColor.border};">
+          <div class="status-label">Overall Project</div>
+          <div class="status-value">${project.overallStatus}</div>
+        </div>
+      </div>
+
+      <div class="status-grid">
+        ${otherStatuses.map(s => {
           const color = getStatusColor(s.value);
           return `
         <div class="status-box" style="background:${color.bg}; color:${color.text}; border:1px solid ${color.border};">
@@ -128,6 +135,8 @@ function generateHTML(projects, coaList, fileName) {
         <div><span class="meta-label">Billing type</span><br>${project.billingType || 'N/A'}</div>
         <div><span class="meta-label">COA</span><br>${project.coa.toUpperCase()}</div>
         <div><span class="meta-label">Executive oversight</span><br>${project.executiveOversight}</div>
+        <div><span class="meta-label">EAC Margin</span><br>${project.eacMargin ? project.eacMargin.toFixed(1) + '%' : 'N/A'}</div>
+        <div><span class="meta-label">ODE Margin</span><br>${project.odeMargin ? project.odeMargin.toFixed(1) + '%' : 'N/A'}</div>
       </div>
 
       ${project.pmSummary || project.leadCommentary ? `
@@ -172,11 +181,13 @@ function generateHTML(projects, coaList, fileName) {
   .subline { font-size:13px; color:#5F5E5A; margin-top:2px; }
   .header-meta { text-align:right; font-size:13px; line-height:1.6; }
   .meta-label { font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:#888780; display:block; }
-  .status-row { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
-  .status-box { flex:1; min-width:110px; border-radius:6px; padding:8px 10px; }
+  .status-row { display:flex; gap:8px; margin-bottom:16px; }
+  .status-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:16px; }
+  .status-box { border-radius:6px; padding:8px 10px; }
+  .status-box-full { width:100%; }
   .status-label { font-size:11px; font-weight:600; }
   .status-value { font-size:13px; margin-top:2px; }
-  .info-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; font-size:13px; margin-bottom:16px; border-top:1px solid #E1E0D9; border-bottom:1px solid #E1E0D9; padding:12px 0; }
+  .info-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; font-size:13px; margin-bottom:16px; border-top:1px solid #E1E0D9; border-bottom:1px solid #E1E0D9; padding:12px 0; }
   .summary-label, .commentary-label { font-size:11px; text-transform:uppercase; letter-spacing:0.03em; color:#888780; margin-bottom:4px; margin-top:12px; }
   .summary-text, .commentary-text { font-size:13px; line-height:1.5; }
   .commentary { margin-top:12px; }
