@@ -15,30 +15,43 @@ export function generateReport(filePath, fileName) {
     }
 
     const projects = data
-      .map(row => ({
-        projectName: row['Project Name'] || 'Unknown',
-        account: row['Account'] || 'Unknown',
-        projectManager: row['Project Manager'] || 'TBD',
-        accountManager: row['Account Manager'] || '',
-        billingType: row['Billing Type'] || '',
-        coa: (row['COA'] || '').toLowerCase(),
-        executiveOversight: row['Executive Oversight'] || 'No',
-        statusUpdated: row['Status Updated'] || new Date().toLocaleDateString(),
-        overallStatus: normalizeStatus(row['Project Overall'] || ''),
-        financials: normalizeStatus(row['Financials'] || ''),
-        scope: normalizeStatus(row['Scope'] || ''),
-        quality: normalizeStatus(row['Quality'] || ''),
-        resources: normalizeStatus(row['Resources'] || ''),
-        schedule: normalizeStatus(row['Schedule'] || ''),
-        clientRelationship: normalizeStatus(row['Client Relationship'] || ''),
-        eacMargin: parseFloat(row['EAC Margin %']) || 0,
-        pmSummary: row['PM Status Summary'] || '',
-        leadCommentary: row['Lead Commentary'] || '',
-        waoc: row['WAOC'] || 'No'
-      }));
+      .map(row => {
+        // Parse COA field - handle both single values and CSV lists
+        const coaString = (row['COA'] || '').trim();
+        const coaArray = coaString
+          .split(',')
+          .map(c => c.trim().toLowerCase())
+          .filter(c => c);
 
-    // Get unique COAs for filter
-    const coaSet = new Set(projects.map(p => p.coa).filter(c => c));
+        return {
+          projectName: row['Project Name'] || 'Unknown',
+          account: row['Account'] || 'Unknown',
+          projectManager: row['Project Manager'] || 'TBD',
+          accountManager: row['Account Manager'] || '',
+          billingType: row['Billing Type'] || '',
+          coaArray: coaArray,
+          coa: coaArray.join(', '),
+          executiveOversight: row['Executive Oversight'] || 'No',
+          statusUpdated: row['Status Updated'] || new Date().toLocaleDateString(),
+          overallStatus: normalizeStatus(row['Project Overall'] || ''),
+          financials: normalizeStatus(row['Financials'] || ''),
+          scope: normalizeStatus(row['Scope'] || ''),
+          quality: normalizeStatus(row['Quality'] || ''),
+          resources: normalizeStatus(row['Resources'] || ''),
+          schedule: normalizeStatus(row['Schedule'] || ''),
+          clientRelationship: normalizeStatus(row['Client Relationship'] || ''),
+          eacMargin: parseFloat(row['EAC Margin %']) || 0,
+          pmSummary: row['PM Status Summary'] || '',
+          leadCommentary: row['Lead Commentary'] || '',
+          waoc: row['WAOC'] || 'No'
+        };
+      });
+
+    // Get unique COAs for filter - flatten all COA arrays and get unique values
+    const coaSet = new Set();
+    projects.forEach(p => {
+      p.coaArray.forEach(coa => coaSet.add(coa));
+    });
     const coaList = Array.from(coaSet).sort();
 
     // Generate HTML
@@ -85,7 +98,7 @@ function generateHTML(projects, coaList, fileName) {
     ];
 
     return `
-    <section class="card" data-coa="${project.coa}">
+    <section class="card" data-coa-list='${JSON.stringify(project.coaArray)}'>
       <div class="card-header">
         <div>
           <h2>${project.projectName}</h2>
@@ -212,7 +225,11 @@ function generateHTML(projects, coaList, fileName) {
       let visibleCount = 0;
 
       cards.forEach(card => {
-        if (selectedCoAs.length === 0 || selectedCoAs.includes(card.dataset.coa)) {
+        const projectCoAs = JSON.parse(card.dataset.coaList || '[]');
+        const hasMatchingCOA = selectedCoAs.length === 0 ||
+          selectedCoAs.some(selected => projectCoAs.includes(selected));
+
+        if (hasMatchingCOA) {
           card.classList.remove('hidden');
           visibleCount++;
         } else {
