@@ -5,7 +5,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
-import pgSession from 'connect-pg-simple';
 import { db, initializeDB } from '../api/db.js';
 import { generateReport } from './reportGenerator.js';
 
@@ -24,20 +23,11 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Session store using PostgreSQL
-const pgSessionStore = pgSession(session);
-const sessionStore = new pgSessionStore({
-  pool: db.getPool(),
-  createTableIfMissing: true,
-  tableName: 'session'
-});
-
-// Session middleware
+// Simple in-memory session store
 const sessionMiddleware = session({
-  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false,
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -84,14 +74,6 @@ app.use(express.json());
 
 // Middleware to check if user is authenticated
 function requireAuth(req, res, next) {
-  console.log('Auth check:', {
-    path: req.path,
-    method: req.method,
-    sessionId: req.sessionID,
-    userId: req.session?.userId,
-    allSessionKeys: Object.keys(req.session || {}),
-    hasCookie: !!req.headers.cookie
-  });
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
@@ -101,40 +83,24 @@ function requireAuth(req, res, next) {
 // ============ AUTHENTICATION ENDPOINTS ============
 
 // Simple password login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', (req, res) => {
   const { password } = req.body;
 
   if (!password) {
     return res.status(400).json({ error: 'Password required' });
   }
 
-  // Get app password from environment (fallback to default)
   const appPassword = process.env.APP_PASSWORD || 'password';
 
   if (password !== appPassword) {
     return res.status(401).json({ error: 'Invalid password' });
   }
 
-  // Generate a simple user ID for session
-  req.session.userId = 'user-' + Date.now();
-  req.session.authenticated = true;
+  req.session.userId = 'authenticated';
 
-  console.log('Login: Setting session', {
-    sessionId: req.sessionID,
-    userId: req.session.userId,
-    authenticated: req.session.authenticated
-  });
-
-  req.session.save((err) => {
-    if (err) {
-      console.error('Login: Error saving session:', err);
-      return res.status(500).json({ error: 'Failed to save session' });
-    }
-    console.log('Login: Session saved successfully', { sessionId: req.sessionID });
-    res.json({
-      success: true,
-      message: 'Logged in successfully'
-    });
+  res.json({
+    success: true,
+    message: 'Logged in successfully'
   });
 });
 
@@ -158,20 +124,6 @@ app.get('/api/auth/status', (req, res) => {
 });
 
 // ============ PROTECTED ENDPOINTS ============
-
-// Log all /api/upload requests
-app.post('/api/upload', (req, res, next) => {
-  console.log('Upload request received:', {
-    url: req.url,
-    headers: {
-      'content-type': req.headers['content-type'],
-      'cookie': req.headers.cookie ? 'present' : 'missing'
-    },
-    sessionID: req.sessionID,
-    userId: req.session?.userId
-  });
-  next();
-});
 
 // Upload and process file (protected)
 app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => {
