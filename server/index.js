@@ -159,6 +159,20 @@ app.get('/api/auth/status', (req, res) => {
 
 // ============ PROTECTED ENDPOINTS ============
 
+// Log all /api/upload requests
+app.post('/api/upload', (req, res, next) => {
+  console.log('Upload request received:', {
+    url: req.url,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'cookie': req.headers.cookie ? 'present' : 'missing'
+    },
+    sessionID: req.sessionID,
+    userId: req.session?.userId
+  });
+  next();
+});
+
 // Upload and process file (protected)
 app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {
