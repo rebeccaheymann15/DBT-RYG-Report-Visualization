@@ -25,12 +25,12 @@ if (!fs.existsSync(uploadsDir)) {
 
 // Simple in-memory session store
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
-  resave: false,
-  saveUninitialized: false,
+  secret: process.env.SESSION_SECRET || 'session-secret-key',
+  resave: true,
+  saveUninitialized: true,
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: false,
     sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000
   }
@@ -97,10 +97,14 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   req.session.userId = 'authenticated';
-
-  res.json({
-    success: true,
-    message: 'Logged in successfully'
+  req.session.save((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to save session' });
+    }
+    res.json({
+      success: true,
+      message: 'Logged in successfully'
+    });
   });
 });
 
@@ -121,6 +125,18 @@ app.get('/api/auth/status', (req, res) => {
   } else {
     res.json({ authenticated: false });
   }
+});
+
+// Debug endpoint - shows session state (for testing only)
+app.get('/api/debug/session', (req, res) => {
+  res.json({
+    sessionID: req.sessionID,
+    session: {
+      userId: req.session.userId,
+      ...req.session
+    },
+    cookies: req.headers.cookie ? 'present' : 'missing'
+  });
 });
 
 // ============ PROTECTED ENDPOINTS ============
