@@ -84,10 +84,13 @@ app.use(express.json());
 
 // Middleware to check if user is authenticated
 function requireAuth(req, res, next) {
-  console.log('Auth check - session:', {
+  console.log('Auth check:', {
+    path: req.path,
+    method: req.method,
     sessionId: req.sessionID,
     userId: req.session?.userId,
-    cookies: req.headers.cookie?.substring(0, 100)
+    allSessionKeys: Object.keys(req.session || {}),
+    hasCookie: !!req.headers.cookie
   });
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -116,11 +119,18 @@ app.post('/api/auth/login', async (req, res) => {
   req.session.userId = 'user-' + Date.now();
   req.session.authenticated = true;
 
+  console.log('Login: Setting session', {
+    sessionId: req.sessionID,
+    userId: req.session.userId,
+    authenticated: req.session.authenticated
+  });
+
   req.session.save((err) => {
     if (err) {
-      console.error('Error saving session:', err);
+      console.error('Login: Error saving session:', err);
       return res.status(500).json({ error: 'Failed to save session' });
     }
+    console.log('Login: Session saved successfully', { sessionId: req.sessionID });
     res.json({
       success: true,
       message: 'Logged in successfully'
